@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trading Card Game MVP</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <svg id="fxLayer" class="fx-layer" aria-hidden="true"></svg>
+      <section class="topbar">
+        <div>
+          <h1>Green vs Arcane</h1>
+          <p id="status">Loading game...</p>
+        </div>
+        <div class="actions">
+          <button id="newGameBtn" type="button">New Game</button>
+          <button id="exertAllBtn" type="button">Exert Nodes</button>
+          <button id="attackBtn" type="button">Attack Player</button>
+          <button id="endTurnBtn" type="button">End Turn</button>
+        </div>
+      </section>
+
+      <section class="table">
+        <article class="player-panel opponent" data-combat-target="bot">
+          <header>
+            <div>
+              <h2>Bot: Arcane Deck</h2>
+              <p><span id="botLife">30</span> life · <span id="botDeck">40</span> deck · <span id="botHand">5</span> hand</p>
+            </div>
+            <p><span id="botEnergy">0</span> energy · <span id="botNodes">0</span> nodes</p>
+          </header>
+          <div class="lane-title">Battlefield</div>
+          <div id="botBattlefield" class="battlefield"></div>
+          <div class="lane-title">Nodes</div>
+          <div id="botNodeRow" class="node-row"></div>
+        </article>
+
+        <article class="center-panel">
+          <div id="stackHint" class="stack-hint">Click a card in your hand to play it. Exert Nodes for energy.</div>
+          <div class="turn-card">
+            <span id="turnBadge">Your Turn</span>
+            <strong id="phaseCallout">Main Phase</strong>
+          </div>
+          <ol id="log" class="log"></ol>
+        </article>
+
+        <article class="player-panel player" data-combat-target="player">
+          <header>
+            <div>
+              <h2>You: Green Deck</h2>
+              <p><span id="playerLife">30</span> life · <span id="playerDeck">40</span> deck · <span id="playerHandCount">5</span> hand</p>
+            </div>
+            <p><span id="playerEnergy">0</span> energy · <span id="playerNodes">0</span> nodes</p>
+          </header>
+          <div class="lane-title">Nodes</div>
+          <div id="playerNodeRow" class="node-row"></div>
+          <div class="lane-title">Battlefield</div>
+          <div id="playerBattlefield" class="battlefield"></div>
+          <div class="lane-title">Hand</div>
+          <div id="playerHand" class="hand"></div>
+        </article>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
