@@ -77,9 +77,11 @@ const cardDefs = {
 const els = {
   status: document.querySelector("#status"),
   newGameBtn: document.querySelector("#newGameBtn"),
+  menuBtn: document.querySelector("#menuBtn"),
   exertAllBtn: document.querySelector("#exertAllBtn"),
   attackBtn: document.querySelector("#attackBtn"),
   endTurnBtn: document.querySelector("#endTurnBtn"),
+  logToggleBtn: document.querySelector("#logToggleBtn"),
   fxLayer: document.querySelector("#fxLayer"),
   log: document.querySelector("#log"),
   stackHint: document.querySelector("#stackHint"),
@@ -100,10 +102,33 @@ const els = {
   botBattlefield: document.querySelector("#botBattlefield"),
   playerNodeRow: document.querySelector("#playerNodeRow"),
   botNodeRow: document.querySelector("#botNodeRow"),
+  // menu + chrome
+  mainMenu: document.querySelector("#mainMenu"),
+  gameRoot: document.querySelector("#gameRoot"),
+  startTutorialBtn: document.querySelector("#startTutorialBtn"),
+  openPackBtn: document.querySelector("#openPackBtn"),
+  tutorialBanner: document.querySelector("#tutorialBanner"),
+  sideRail: document.querySelector("#sideRail"),
+  // previews
+  cardPreview: document.querySelector("#cardPreview"),
+  enterPreview: document.querySelector("#enterPreview"),
+  // graveyards
+  botGraveBtn: document.querySelector("#botGraveBtn"),
+  playerGraveBtn: document.querySelector("#playerGraveBtn"),
+  botGraveCount: document.querySelector("#botGraveCount"),
+  playerGraveCount: document.querySelector("#playerGraveCount"),
+  graveModal: document.querySelector("#graveModal"),
+  graveModalTitle: document.querySelector("#graveModalTitle"),
+  graveModalList: document.querySelector("#graveModalList"),
+  graveModalClose: document.querySelector("#graveModalClose"),
 };
+
+const BOT_STEP_DELAY = 1000; // pause between individual bot actions
+const BOT_TURN_GAP = 1150; // pause before handing the turn back
 
 let uid = 0;
 let game;
+let enterPreviewTimer = null;
 
 function makeCard(id) {
   return {
@@ -138,12 +163,23 @@ function buildPlayer(name, deckIds) {
     hand: [],
     battlefield: [],
     nodes: [],
+    graveyard: [],
     energy: 0,
     nodePlayed: false,
   };
 }
 
-function newGame() {
+// Pull the named cards out of the (already shuffled) deck into hand.
+function dealFixedHand(player, ids) {
+  for (const id of ids) {
+    const idx = player.deck.findIndex((card) => card.id === id);
+    if (idx >= 0) player.hand.push(player.deck.splice(idx, 1)[0]);
+    else player.hand.push(makeCard(id));
+  }
+}
+
+function newGame(opts = {}) {
+  const tutorial = opts.tutorial !== false; // tutorial is the default mode
   uid = 0;
   const greenDeck = [
     ...Array(17).fill("node"),
@@ -168,10 +204,15 @@ function newGame() {
     winner: null,
     selectedAttackerUid: null,
     lastEvent: null,
+    tutorial: { mode: tutorial, active: tutorial, stepIndex: 0 },
   };
-  drawCards(game.player, 5);
-  drawCards(game.bot, 5);
+
+  // Fixed opening hands so the tutorial is deterministic.
+  dealFixedHand(game.player, ["node", "node", "primordialGoo", "ancientBoar", "shamanOfStrength"]);
+  dealFixedHand(game.bot, ["ignite", "node", "node", "prodigalSorcerer", "deathfireMage"]);
+
   log("Game started. You are on the play with the green deck.");
+  if (tutorial) log("Tutorial active — follow the gold banner at the top.");
   render();
 }
 
@@ -195,8 +236,8 @@ function drawCards(player, count = 1) {
 }
 
 function log(message) {
-  game.log.unshift(message);
-  game.log = game.log.slice(0, 18);
+  game.log.push(message);
+  if (game.log.length > 30) game.log = game.log.slice(-30);
 }
 
 function currentMight(card) {
@@ -235,7 +276,7 @@ function startTurn(owner) {
   checkWinner();
   render();
   if (owner === "bot" && !game.winner) {
-    window.setTimeout(botTurn, 650);
+    window.setTimeout(botTurn, BOT_TURN_GAP);
   }
 }
 
@@ -245,7 +286,7 @@ function endTurn() {
   game.selectedAttackerUid = null;
   log("You end the turn.");
   render();
-  window.setTimeout(() => startTurn("bot"), 450);
+  window.setTimeout(() => startTurn("bot"), 600);
 }
 
 function cleanupEndOfTurn(player) {
@@ -288,6 +329,7 @@ function playCardFromHand(player, cardUid, targetUid = null) {
     player.nodes.push(card);
     player.nodePlayed = true;
     log(`${player.name} played Node.`);
+    showEnterPreview(card);
     render();
     pulseCard(card.uid, "pulse-cast");
     return true;
@@ -310,12 +352,15 @@ function playCardFromHand(player, cardUid, targetUid = null) {
     card.canAttack = false;
     player.battlefield.push(card);
     log(`${player.name} cast ${card.name}.`);
+    showEnterPreview(card);
     handleCreatureEntered(player, card);
     game.lastEvent = { kind: "cast", sourceUid: card.uid };
   } else if (card.id === "ignite") {
     const event = resolveIgnite(player, targetUid);
     log(`${player.name} cast Ignite.`);
+    showEnterPreview(card);
     triggerSpellCast(player);
+    player.graveyard.push(card);
     game.lastEvent = event;
   }
 
@@ -383,9 +428,18 @@ function chooseBestDamageTarget(creatures) {
 
 function checkStateBasedActions() {
   for (const player of [game.player, game.bot]) {
-    const before = player.battlefield.length;
-    player.battlefield = player.battlefield.filter((card) => card.damage < currentToughness(card));
-    const lost = before - player.battlefield.length;
+    const survivors = [];
+    let lost = 0;
+    for (const card of player.battlefield) {
+      if (card.damage < currentToughness(card)) {
+        survivors.push(card);
+      } else {
+        card.canAttack = false;
+        player.graveyard.push(card);
+        lost++;
+      }
+    }
+    player.battlefield = survivors;
     if (lost) log(`${player.name} lost ${lost} creature${lost === 1 ? "" : "s"}.`);
   }
 }
@@ -440,54 +494,87 @@ function attackCreatureWithSelected(targetUid) {
   render();
 }
 
-function botAttackFace() {
+function botAttackFaceSingle(attacker) {
   if (game.winner) return;
-  const attackers = availableAttackers(game.bot);
-  if (!attackers.length) {
-    return;
-  }
-  for (const attacker of attackers) {
-    const sourceRect = getUidRect(attacker.uid);
-    const targetRect = getCombatTargetRect("player");
-    game.player.life -= currentMight(attacker);
-    log(`${attacker.name} attacks you for ${currentMight(attacker)}.`);
-    game.lastEvent = {
-      kind: "attackFace",
-      sourceUid: attacker.uid,
-      targetPlayer: "player",
-      sourceRect,
-      targetRect,
-      amount: currentMight(attacker),
-    };
-    attacker.canAttack = false;
-  }
+  const sourceRect = getUidRect(attacker.uid);
+  const targetRect = getCombatTargetRect("player");
+  game.player.life -= currentMight(attacker);
+  log(`${attacker.name} attacks you for ${currentMight(attacker)}.`);
+  game.lastEvent = {
+    kind: "attackFace",
+    sourceUid: attacker.uid,
+    targetPlayer: "player",
+    sourceRect,
+    targetRect,
+    amount: currentMight(attacker),
+  };
+  attacker.canAttack = false;
   checkWinner();
-  render();
 }
 
+// ---------- Bot turn, sequenced so a human can follow it ----------
 function botTurn() {
   if (game.winner || game.turn !== "bot") return;
-  const bot = game.bot;
-  playFirstNode(bot);
-  exertAll(bot);
+  setHint("Bot is taking its turn…");
+  const opener = [() => playFirstNode(game.bot), () => exertAll(game.bot)];
+  runBotActions(opener);
+}
 
-  let played = true;
-  while (played) {
-    played = false;
-    const playable = bot.hand
-      .filter((card) => card.type !== "Node" && card.cost <= bot.energy)
-      .filter((card) => card.id !== "ignite" || chooseIgniteTarget(bot))
-      .sort((a, b) => priority(b) - priority(a))[0];
-    if (playable) {
-      played = playCardFromHand(bot, playable.uid);
-    }
+function runBotActions(queue) {
+  if (game.winner) {
+    finishBotTurn();
+    return;
   }
+  if (queue.length) {
+    queue.shift()();
+    render();
+    window.setTimeout(() => runBotActions(queue), BOT_STEP_DELAY);
+    return;
+  }
+  const playable = nextBotPlayable();
+  if (playable) {
+    playCardFromHand(game.bot, playable.uid);
+    render();
+    window.setTimeout(() => runBotActions([]), BOT_STEP_DELAY);
+    return;
+  }
+  const attackers = availableAttackers(game.bot);
+  if (attackers.length) {
+    runBotAttacks(attackers);
+    return;
+  }
+  finishBotTurn();
+}
 
-  botAttackFace();
-  cleanupEndOfTurn(bot);
+function runBotAttacks(attackers) {
+  if (game.winner) {
+    finishBotTurn();
+    return;
+  }
+  const attacker = attackers.shift();
+  if (!attacker) {
+    finishBotTurn();
+    return;
+  }
+  botAttackFaceSingle(attacker);
+  render();
+  window.setTimeout(() => runBotAttacks(attackers), BOT_STEP_DELAY);
+}
+
+function finishBotTurn() {
+  cleanupEndOfTurn(game.bot);
   log("Bot ends the turn.");
   render();
-  if (!game.winner) window.setTimeout(() => startTurn("player"), 550);
+  if (!game.winner) window.setTimeout(() => startTurn("player"), BOT_TURN_GAP);
+}
+
+function nextBotPlayable() {
+  return game.bot.hand
+    .filter((card) => card.type !== "Node" && card.cost <= game.bot.energy)
+    .filter((card) => card.id !== "ignite" || chooseIgniteTarget(game.bot))
+    // During the tutorial the bot won't burn your Boar, so the attack lesson works.
+    .filter((card) => !(game.tutorial.active && card.id === "ignite"))
+    .sort((a, b) => priority(b) - priority(a))[0];
 }
 
 function priority(card) {
@@ -513,9 +600,112 @@ function setHint(text) {
   els.stackHint.textContent = text;
 }
 
+// ---------- Tutorial engine ----------
+const TUTORIAL_STEPS = [
+  {
+    banner: "Step 1 — Click the highlighted Node in your hand to play it. Nodes are your energy source.",
+    focus: { zone: "hand", id: "node" },
+    allow: (a) => a.type === "playCard" && a.card.id === "node",
+    isComplete: (g) => g.player.nodes.length >= 1,
+  },
+  {
+    banner: "Step 2 — Click the Node on your battlefield to exert it for 1 energy.",
+    focus: { zone: "playerNode" },
+    allow: (a) => a.type === "exertNode" || a.type === "exertAll",
+    isComplete: (g) => g.player.energy >= 1,
+  },
+  {
+    banner: "Step 3 — Now play Ancient Boar from your hand (it costs 1 energy). Click it.",
+    focus: { zone: "hand", id: "ancientBoar" },
+    allow: (a) => a.type === "playCard" && a.card.id === "ancientBoar",
+    isComplete: (g) => g.player.battlefield.some((c) => c.id === "ancientBoar"),
+  },
+  {
+    banner: "Creatures can't attack the turn they're played — that's summoning sickness. Click End Turn to pass to the bot.",
+    focus: { zone: "button", btn: "endTurnBtn" },
+    allow: (a) => a.type === "endTurn",
+    isComplete: (g) => g.turn === "bot" || g.turnNumber >= 2,
+  },
+  {
+    banner: "Watch the bot take its turn — its actions play out slowly so you can follow what's happening.",
+    focus: null,
+    allow: () => false,
+    isComplete: (g) => g.turn === "player" && g.turnNumber >= 2,
+  },
+  {
+    banner: "Turn 2 — You drew a card. Now play your second Node from your hand.",
+    focus: { zone: "hand", id: "node" },
+    allow: (a) => a.type === "playCard" && a.card.id === "node",
+    isComplete: (g) => g.player.nodes.length >= 2,
+  },
+  {
+    banner: "Exert your Nodes for energy — click each Node, or use the Exert Nodes button.",
+    focus: { zone: "playerNode" },
+    allow: (a) => a.type === "exertNode" || a.type === "exertAll",
+    isComplete: (g) => g.player.energy >= 2,
+  },
+  {
+    banner: "Your Ancient Boar is ready now (no longer summoning sick). Click it to select it as an attacker.",
+    focus: { zone: "playerBattle", id: "ancientBoar" },
+    allow: (a) => a.type === "selectAttacker",
+    isComplete: (g) => !!g.selectedAttackerUid,
+  },
+  {
+    banner: "Click Attack Player to swing at the bot with your Boar (or click an enemy creature to fight it).",
+    focus: { zone: "button", btn: "attackBtn" },
+    allow: (a) => a.type === "attackFace" || a.type === "attackCreature",
+    isComplete: (g) => g.player.battlefield.some((c) => c.id === "ancientBoar" && c.canAttack === false) && !g.selectedAttackerUid,
+  },
+  {
+    banner: "Tutorial complete! 🎉 You've got the basics. Keep playing freely — reduce the bot to 0 life to win!",
+    focus: null,
+    allow: () => true,
+    isComplete: () => false,
+    final: true,
+  },
+];
+
+function currentStep() {
+  return game.tutorial.mode ? TUTORIAL_STEPS[game.tutorial.stepIndex] : null;
+}
+
+function stepAllows(action) {
+  if (!game.tutorial.active) return true;
+  const step = currentStep();
+  return step ? step.allow(action) : true;
+}
+
+function maybeAdvanceTutorial() {
+  if (!game.tutorial.active) return;
+  let step = TUTORIAL_STEPS[game.tutorial.stepIndex];
+  while (step && !step.final && step.isComplete(game) && game.tutorial.stepIndex < TUTORIAL_STEPS.length - 1) {
+    game.tutorial.stepIndex++;
+    step = TUTORIAL_STEPS[game.tutorial.stepIndex];
+  }
+  if (step && step.final) {
+    game.tutorial.active = false;
+  }
+}
+
+function renderTutorial() {
+  if (!game.tutorial.mode) {
+    els.tutorialBanner.hidden = true;
+    return;
+  }
+  const step = TUTORIAL_STEPS[game.tutorial.stepIndex];
+  els.tutorialBanner.hidden = false;
+  els.tutorialBanner.textContent = step.banner;
+}
+
+// ---------- Rendering ----------
 function render() {
+  if (!game) return;
+  maybeAdvanceTutorial();
+
   const player = game.player;
   const bot = game.bot;
+  const step = game.tutorial.active ? currentStep() : null;
+
   els.status.textContent = game.winner
     ? game.winner
     : game.turn === "player"
@@ -531,30 +721,59 @@ function render() {
   els.botEnergy.textContent = bot.energy;
   els.playerNodes.textContent = player.nodes.length;
   els.botNodes.textContent = bot.nodes.length;
-  els.exertAllBtn.disabled = game.turn !== "player" || !!game.winner || !player.nodes.some((node) => !node.exerted);
-  els.attackBtn.disabled = game.turn !== "player" || !!game.winner || !game.selectedAttackerUid;
-  els.endTurnBtn.disabled = game.turn !== "player" || !!game.winner;
+  els.playerGraveCount.textContent = player.graveyard.length;
+  els.botGraveCount.textContent = bot.graveyard.length;
+
+  const canExert = game.turn === "player" && !game.winner && player.nodes.some((node) => !node.exerted);
+  const canAttack = game.turn === "player" && !game.winner && !!game.selectedAttackerUid;
+  const canEnd = game.turn === "player" && !game.winner;
+
+  els.exertAllBtn.disabled = !canExert || !stepAllows({ type: "exertAll" });
+  els.attackBtn.disabled = !canAttack || !stepAllows({ type: "attackFace" });
+  els.endTurnBtn.disabled = !canEnd || !stepAllows({ type: "endTurn" });
+
+  applyButtonFocus(els.exertAllBtn, step && step.focus && step.focus.btn === "exertAllBtn");
+  applyButtonFocus(els.attackBtn, step && step.focus && step.focus.btn === "attackBtn");
+  applyButtonFocus(els.endTurnBtn, step && step.focus && step.focus.btn === "endTurnBtn");
+
   els.turnBadge.textContent = game.turn === "player" ? "Your Turn" : "Bot Turn";
   els.phaseCallout.textContent = game.winner ? game.winner : game.turn === "player" ? "Main Phase" : "Resolving Bot Actions";
 
   renderHand();
   renderBattlefield(els.playerBattlefield, player.battlefield, true);
   renderBattlefield(els.botBattlefield, bot.battlefield, false);
-  renderNodes(els.playerNodeRow, player.nodes);
-  renderNodes(els.botNodeRow, bot.nodes);
+  renderNodes(els.playerNodeRow, player.nodes, true);
+  renderNodes(els.botNodeRow, bot.nodes, false);
+
   els.log.innerHTML = game.log.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("");
+  els.log.scrollTop = els.log.scrollHeight;
+
+  renderTutorial();
   flushVisualEvent();
+}
+
+function applyButtonFocus(btn, on) {
+  btn.classList.toggle("btn-focus", !!on && !btn.disabled);
 }
 
 function renderHand() {
   els.playerHand.innerHTML = "";
+  const step = game.tutorial.active ? currentStep() : null;
   for (const card of game.player.hand) {
-    const playable = game.turn === "player" && !game.winner && (card.type === "Node" ? !game.player.nodePlayed : game.player.energy >= card.cost);
+    const affordable = game.turn === "player" && !game.winner && (card.type === "Node" ? !game.player.nodePlayed : game.player.energy >= card.cost);
+    const allowed = stepAllows({ type: "playCard", card });
+    const playable = affordable && allowed;
     const el = document.createElement("article");
     el.className = `card ${card.faction} ${playable ? "playable" : ""}`;
+    if (game.tutorial.active && !allowed) el.classList.add("tutorial-locked");
+    if (step && step.focus && step.focus.zone === "hand" && step.focus.id === card.id) el.classList.add("tutorial-focus");
     el.dataset.uid = card.uid;
     el.innerHTML = `<button type="button" aria-label="Play ${escapeHtml(card.name)}"><img src="${card.image}" alt="${escapeHtml(card.name)} card" /></button>`;
     el.querySelector("button").addEventListener("click", () => {
+      if (game.tutorial.active && !stepAllows({ type: "playCard", card })) {
+        setHint("Follow the tutorial step shown in the gold banner.");
+        return;
+      }
       if (card.id === "ignite") {
         const target = chooseBestDamageTarget(game.bot.battlefield) || chooseBestDamageTarget(game.player.battlefield);
         playCardFromHand(game.player, card.uid, target?.uid);
@@ -562,19 +781,20 @@ function renderHand() {
         playCardFromHand(game.player, card.uid);
       }
     });
+    attachPreview(el, card);
     els.playerHand.appendChild(el);
   }
 }
 
 function renderBattlefield(container, cards, isPlayer) {
   container.innerHTML = "";
+  const step = game.tutorial.active ? currentStep() : null;
   for (const card of cards) {
     const el = document.createElement("article");
-    const selected = game.selectedAttackerUid === card.uid ? "playable" : "";
     const selectedClass = game.selectedAttackerUid === card.uid ? "selected" : "";
     const readyClass = card.canAttack === true ? "ready" : "";
     const targetClass = !isPlayer && game.turn === "player" && game.selectedAttackerUid ? "enemy-target" : "";
-    el.className = `card battle-card ${card.faction} ${card.canAttack === false ? "sick" : ""} ${selected} ${selectedClass} ${readyClass} ${targetClass}`;
+    el.className = `card battle-card ${card.faction} ${card.canAttack === false ? "sick" : ""} ${selectedClass} ${readyClass} ${targetClass}`;
     el.dataset.uid = card.uid;
     el.innerHTML = `
       ${card.damage ? `<div class="damage-pill">${card.damage} dmg</div>` : ""}
@@ -586,10 +806,15 @@ function renderBattlefield(container, cards, isPlayer) {
       </div>
     `;
     if (isPlayer && game.turn === "player" && card.canAttack === true) {
+      if (step && step.focus && step.focus.zone === "playerBattle" && step.focus.id === card.id) el.classList.add("tutorial-focus");
       el.role = "button";
       el.tabIndex = 0;
       el.title = "Select attacker";
       el.addEventListener("click", () => {
+        if (game.tutorial.active && !stepAllows({ type: "selectAttacker", card })) {
+          setHint("Follow the tutorial step shown in the gold banner.");
+          return;
+        }
         game.selectedAttackerUid = game.selectedAttackerUid === card.uid ? null : card.uid;
         setHint(game.selectedAttackerUid ? "Choose Attack Player or click an enemy creature." : "Click a card in your hand to play it. Exert Nodes for energy.");
         render();
@@ -599,20 +824,30 @@ function renderBattlefield(container, cards, isPlayer) {
       el.role = "button";
       el.tabIndex = 0;
       el.title = "Attack this creature";
-      el.addEventListener("click", () => attackCreatureWithSelected(card.uid));
+      el.addEventListener("click", () => {
+        if (game.tutorial.active && !stepAllows({ type: "attackCreature" })) {
+          setHint("Follow the tutorial step shown in the gold banner.");
+          return;
+        }
+        attackCreatureWithSelected(card.uid);
+      });
     }
+    attachPreview(el, card);
     container.appendChild(el);
   }
 }
 
-function renderNodes(container, nodes) {
+function renderNodes(container, nodes, isPlayer) {
   container.innerHTML = "";
+  const step = game.tutorial.active ? currentStep() : null;
   for (const node of nodes) {
     const el = document.createElement("article");
     el.className = `card node neutral ${node.exerted ? "exerted" : ""}`;
+    if (isPlayer && step && step.focus && step.focus.zone === "playerNode" && !node.exerted) el.classList.add("tutorial-focus");
     el.dataset.uid = node.uid;
     el.innerHTML = `
       <button type="button" aria-label="Exert Node">
+        <div class="art-crop"><img src="${node.image}" alt="Node artwork" /></div>
         <div class="mini-card">
           <div class="name">Node</div>
           <div class="rules">${node.exerted ? "Exerted" : "Ready"}</div>
@@ -620,15 +855,87 @@ function renderNodes(container, nodes) {
       </button>
     `;
     el.querySelector("button").addEventListener("click", () => {
-      if (game.turn === "player" && game.player.nodes.includes(node) && exertNode(game.player, node)) {
+      if (!isPlayer) return;
+      if (game.turn !== "player" || game.winner) return;
+      if (game.tutorial.active && !stepAllows({ type: "exertNode" })) {
+        setHint("Follow the tutorial step shown in the gold banner.");
+        return;
+      }
+      if (game.player.nodes.includes(node) && exertNode(game.player, node)) {
         log("You exerted Node for 1 energy.");
         render();
       }
     });
+    attachPreview(el, node);
     container.appendChild(el);
   }
 }
 
+// ---------- Hover zoom preview ----------
+function attachPreview(el, card) {
+  el.addEventListener("mouseenter", (e) => {
+    showCardPreview(card);
+    positionPreview(e);
+  });
+  el.addEventListener("mousemove", positionPreview);
+  el.addEventListener("mouseleave", hideCardPreview);
+}
+
+function showCardPreview(card) {
+  els.cardPreview.innerHTML = `<img src="${card.image}" alt="${escapeHtml(card.name)} full card" />`;
+  els.cardPreview.classList.add("show");
+}
+
+function hideCardPreview() {
+  els.cardPreview.classList.remove("show");
+}
+
+function positionPreview(e) {
+  const p = els.cardPreview;
+  const w = p.offsetWidth || 280;
+  const h = p.offsetHeight || 392;
+  let x = e.clientX + 24;
+  let y = e.clientY - h / 2;
+  if (x + w > window.innerWidth - 8) x = e.clientX - w - 24;
+  if (x < 8) x = 8;
+  if (y < 8) y = 8;
+  if (y + h > window.innerHeight - 8) y = window.innerHeight - h - 8;
+  p.style.left = `${x}px`;
+  p.style.top = `${y}px`;
+}
+
+// ---------- Entering-card preview ----------
+function showEnterPreview(card) {
+  const el = els.enterPreview;
+  el.innerHTML = `
+    <div class="enter-card"><img src="${card.image}" alt="${escapeHtml(card.name)} full card" /></div>
+    <div class="enter-tag">${escapeHtml(card.name)} enters play</div>
+  `;
+  el.classList.remove("show");
+  void el.offsetWidth;
+  el.classList.add("show");
+  window.clearTimeout(enterPreviewTimer);
+  enterPreviewTimer = window.setTimeout(() => el.classList.remove("show"), 1450);
+}
+
+// ---------- Graveyard ----------
+function openGraveyard(player) {
+  els.graveModalTitle.textContent = `${player.name} Graveyard (${player.graveyard.length})`;
+  if (!player.graveyard.length) {
+    els.graveModalList.innerHTML = `<p class="empty">No cards in the graveyard yet.</p>`;
+  } else {
+    els.graveModalList.innerHTML = player.graveyard
+      .map((card) => `<article class="card ${card.faction}"><img src="${card.image}" alt="${escapeHtml(card.name)}" /></article>`)
+      .join("");
+  }
+  els.graveModal.hidden = false;
+}
+
+function closeGraveyard() {
+  els.graveModal.hidden = true;
+}
+
+// ---------- Visual FX ----------
 function flushVisualEvent() {
   if (!game.lastEvent) return;
   const event = game.lastEvent;
@@ -638,7 +945,7 @@ function flushVisualEvent() {
       pulseCard(event.sourceUid, "pulse-cast");
     }
     if (event.kind === "spellDamage") {
-      const source = document.querySelector(`[data-combat-target="${event.sourcePlayer}"] header`);
+      const source = document.querySelector(`[data-combat-target="${event.sourcePlayer}"]`);
       const target = document.querySelector(`[data-uid="${event.targetUid}"]`);
       if (source && target) drawArrow(source, target, "spell");
       else drawArrowBetweenRects(event.sourceRect, event.targetRect, "spell");
@@ -647,7 +954,7 @@ function flushVisualEvent() {
     }
     if (event.kind === "attackFace") {
       const source = document.querySelector(`[data-uid="${event.sourceUid}"]`);
-      const target = document.querySelector(`[data-combat-target="${event.targetPlayer}"] header`);
+      const target = document.querySelector(`[data-combat-target="${event.targetPlayer}"]`);
       if (source && target) drawArrow(source, target, "attack");
       else drawArrowBetweenRects(event.sourceRect, event.targetRect, "attack");
       showFloatingNumber(target || event.targetRect, `-${event.amount}`);
@@ -683,7 +990,7 @@ function getUidRect(uid) {
 }
 
 function getCombatTargetRect(target) {
-  const el = document.querySelector(`[data-combat-target="${target}"] header`);
+  const el = document.querySelector(`[data-combat-target="${target}"]`);
   return el ? rectSnapshot(el) : null;
 }
 
@@ -761,9 +1068,49 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-els.newGameBtn.addEventListener("click", newGame);
-els.exertAllBtn.addEventListener("click", () => exertAll(game.player));
-els.attackBtn.addEventListener("click", attackPlayerWithSelected);
-els.endTurnBtn.addEventListener("click", endTurn);
+function showToast(text) {
+  const toast = document.createElement("div");
+  toast.className = "fx-float";
+  toast.style.setProperty("--x", `${window.innerWidth / 2}px`);
+  toast.style.setProperty("--y", `${window.innerHeight / 2}px`);
+  toast.style.fontSize = "22px";
+  toast.textContent = text;
+  document.body.appendChild(toast);
+  window.setTimeout(() => toast.remove(), 900);
+}
 
-newGame();
+// ---------- Menu + chrome wiring ----------
+function startTutorial() {
+  els.mainMenu.hidden = true;
+  els.gameRoot.hidden = false;
+  newGame({ tutorial: true });
+}
+
+function returnToMenu() {
+  els.gameRoot.hidden = true;
+  els.mainMenu.hidden = false;
+}
+
+els.startTutorialBtn.addEventListener("click", startTutorial);
+els.openPackBtn.addEventListener("click", () => showToast("Packs coming soon!"));
+els.menuBtn.addEventListener("click", returnToMenu);
+els.newGameBtn.addEventListener("click", () => newGame({ tutorial: true }));
+els.exertAllBtn.addEventListener("click", () => {
+  if (game.tutorial.active && !stepAllows({ type: "exertAll" })) return;
+  exertAll(game.player);
+});
+els.attackBtn.addEventListener("click", () => {
+  if (game.tutorial.active && !stepAllows({ type: "attackFace" })) return;
+  attackPlayerWithSelected();
+});
+els.endTurnBtn.addEventListener("click", () => {
+  if (game.tutorial.active && !stepAllows({ type: "endTurn" })) return;
+  endTurn();
+});
+els.logToggleBtn.addEventListener("click", () => els.sideRail.classList.toggle("open"));
+els.botGraveBtn.addEventListener("click", () => openGraveyard(game.bot));
+els.playerGraveBtn.addEventListener("click", () => openGraveyard(game.player));
+els.graveModalClose.addEventListener("click", closeGraveyard);
+els.graveModal.addEventListener("click", (e) => {
+  if (e.target === els.graveModal) closeGraveyard();
+});
