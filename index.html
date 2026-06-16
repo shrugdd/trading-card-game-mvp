@@ -2,66 +2,112 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Trading Card Game MVP</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="game-shell">
-      <svg id="fxLayer" class="fx-layer" aria-hidden="true"></svg>
+    <svg id="fxLayer" class="fx-layer" aria-hidden="true"></svg>
+
+    <!-- Main menu -->
+    <div id="mainMenu" class="menu-overlay">
+      <div class="menu-card">
+        <h1>Green vs Arcane</h1>
+        <p class="menu-sub">A trading card game</p>
+        <p class="menu-hint">New here? Start the tutorial — it walks you through your first two turns step by step.</p>
+        <div class="menu-buttons">
+          <button id="startTutorialBtn" type="button" class="menu-primary">Start Tutorial</button>
+          <button id="openPackBtn" type="button">Open Pack</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hover zoom preview -->
+    <div id="cardPreview" class="card-preview" aria-hidden="true"></div>
+
+    <!-- Entering-card preview -->
+    <div id="enterPreview" class="enter-preview" aria-hidden="true"></div>
+
+    <!-- Graveyard modal -->
+    <div id="graveModal" class="grave-modal" hidden>
+      <div class="grave-modal-card">
+        <header>
+          <h3 id="graveModalTitle">Graveyard</h3>
+          <button id="graveModalClose" type="button">Close</button>
+        </header>
+        <div id="graveModalList" class="grave-modal-list"></div>
+      </div>
+    </div>
+
+    <main id="gameRoot" class="game-shell" hidden>
       <section class="topbar">
         <div>
           <h1>Green vs Arcane</h1>
           <p id="status">Loading game...</p>
         </div>
         <div class="actions">
+          <button id="menuBtn" type="button">Menu</button>
           <button id="newGameBtn" type="button">New Game</button>
           <button id="exertAllBtn" type="button">Exert Nodes</button>
           <button id="attackBtn" type="button">Attack Player</button>
           <button id="endTurnBtn" type="button">End Turn</button>
+          <button id="logToggleBtn" type="button" class="log-toggle">Log</button>
         </div>
       </section>
 
-      <section class="table">
-        <article class="player-panel opponent" data-combat-target="bot">
-          <header>
-            <div>
-              <h2>Bot: Arcane Deck</h2>
-              <p><span id="botLife">30</span> life · <span id="botDeck">40</span> deck · <span id="botHand">5</span> hand</p>
-            </div>
-            <p><span id="botEnergy">0</span> energy · <span id="botNodes">0</span> nodes</p>
-          </header>
-          <div class="lane-title">Battlefield</div>
-          <div id="botBattlefield" class="battlefield"></div>
-          <div class="lane-title">Nodes</div>
-          <div id="botNodeRow" class="node-row"></div>
-        </article>
+      <div id="tutorialBanner" class="tutorial-banner" hidden></div>
 
-        <article class="center-panel">
-          <div id="stackHint" class="stack-hint">Click a card in your hand to play it. Exert Nodes for energy.</div>
-          <div class="turn-card">
-            <span id="turnBadge">Your Turn</span>
-            <strong id="phaseCallout">Main Phase</strong>
+      <div class="play-area">
+        <section class="playmat">
+          <div class="status-bar opponent" data-combat-target="bot">
+            <div>
+              <h2>Bot · Arcane Deck</h2>
+              <p><span id="botLife">30</span> life</p>
+            </div>
+            <p><span id="botEnergy">0</span> energy · <span id="botNodes">0</span> nodes · <span id="botHand">5</span> hand · <span id="botDeck">40</span> deck</p>
           </div>
-          <ol id="log" class="log"></ol>
-        </article>
 
-        <article class="player-panel player" data-combat-target="player">
-          <header>
-            <div>
-              <h2>You: Green Deck</h2>
-              <p><span id="playerLife">30</span> life · <span id="playerDeck">40</span> deck · <span id="playerHandCount">5</span> hand</p>
+          <div class="lane-label">Opponent Nodes</div>
+          <div id="botNodeRow" class="node-row"></div>
+
+          <div class="lane-label">Opponent Battlefield</div>
+          <div id="botBattlefield" class="battlefield enemy-field"></div>
+
+          <div class="center-divider">
+            <div class="turn-card">
+              <span id="turnBadge">Your Turn</span>
+              <strong id="phaseCallout">Main Phase</strong>
             </div>
-            <p><span id="playerEnergy">0</span> energy · <span id="playerNodes">0</span> nodes</p>
-          </header>
-          <div class="lane-title">Nodes</div>
-          <div id="playerNodeRow" class="node-row"></div>
-          <div class="lane-title">Battlefield</div>
+          </div>
+
+          <div class="lane-label">Your Battlefield</div>
           <div id="playerBattlefield" class="battlefield"></div>
-          <div class="lane-title">Hand</div>
+
+          <div class="lane-label">Your Nodes</div>
+          <div id="playerNodeRow" class="node-row"></div>
+
+          <div class="status-bar player" data-combat-target="player">
+            <div>
+              <h2>You · Green Deck</h2>
+              <p><span id="playerLife">30</span> life</p>
+            </div>
+            <p><span id="playerEnergy">0</span> energy · <span id="playerNodes">0</span> nodes · <span id="playerHandCount">5</span> hand · <span id="playerDeck">40</span> deck</p>
+          </div>
+
+          <div class="lane-label">Your Hand</div>
           <div id="playerHand" class="hand"></div>
-        </article>
-      </section>
+        </section>
+
+        <aside id="sideRail" class="side-rail">
+          <div id="stackHint" class="stack-hint">Click a card in your hand to play it. Exert Nodes for energy.</div>
+          <div class="graveyards">
+            <button id="botGraveBtn" type="button" class="grave-pile">Bot Graveyard · <span id="botGraveCount">0</span></button>
+            <button id="playerGraveBtn" type="button" class="grave-pile">Your Graveyard · <span id="playerGraveCount">0</span></button>
+          </div>
+          <h3 class="rail-title">Game Log</h3>
+          <ul id="log" class="log"></ul>
+        </aside>
+      </div>
     </main>
 
     <script src="app.js"></script>
