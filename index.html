@@ -60,9 +60,14 @@
       <div class="play-area">
         <section class="playmat">
           <div class="status-bar opponent" data-combat-target="bot">
-            <div>
-              <h2>Bot · Arcane Deck</h2>
-              <p><span id="botLife">30</span> life</p>
+            <div class="status-bar-main">
+              <div class="deck-pile" title="Bot library">
+                <span class="deck-count" id="botDeckPile">40</span>
+              </div>
+              <div>
+                <h2>Bot · Arcane Deck</h2>
+                <p><span id="botLife">30</span> life</p>
+              </div>
             </div>
             <p><span id="botEnergy">0</span> energy · <span id="botNodes">0</span> nodes · <span id="botHand">5</span> hand · <span id="botDeck">40</span> deck</p>
           </div>
@@ -87,9 +92,14 @@
           <div id="playerNodeRow" class="node-row"></div>
 
           <div class="status-bar player" data-combat-target="player">
-            <div>
-              <h2>You · Green Deck</h2>
-              <p><span id="playerLife">30</span> life</p>
+            <div class="status-bar-main">
+              <div class="deck-pile" title="Your library">
+                <span class="deck-count" id="playerDeckPile">40</span>
+              </div>
+              <div>
+                <h2>You · Green Deck</h2>
+                <p><span id="playerLife">30</span> life</p>
+              </div>
             </div>
             <p><span id="playerEnergy">0</span> energy · <span id="playerNodes">0</span> nodes · <span id="playerHandCount">5</span> hand · <span id="playerDeck">40</span> deck</p>
           </div>
