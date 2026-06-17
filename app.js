@@ -78,9 +78,8 @@ const els = {
   status: document.querySelector("#status"),
   newGameBtn: document.querySelector("#newGameBtn"),
   menuBtn: document.querySelector("#menuBtn"),
-  exertAllBtn: document.querySelector("#exertAllBtn"),
-  attackBtn: document.querySelector("#attackBtn"),
-  endTurnBtn: document.querySelector("#endTurnBtn"),
+  phaseBtn: document.querySelector("#phaseBtn"),
+  botStatusBar: document.querySelector('[data-combat-target="bot"]'),
   logToggleBtn: document.querySelector("#logToggleBtn"),
   fxLayer: document.querySelector("#fxLayer"),
   log: document.querySelector("#log"),
@@ -217,7 +216,7 @@ function newGame(opts = {}) {
   game = {
     turn: "player",
     turnNumber: 1,
-    phase: "main",
+    phase: "main1",
     player: buildPlayer("You", greenDeck),
     bot: buildPlayer("Bot", arcaneDeck),
     log: [],
@@ -278,7 +277,7 @@ function damageSpellBonus(player) {
 
 function startTurn(owner) {
   game.turn = owner;
-  game.phase = "main";
+  game.phase = "main1";
   const player = activePlayer();
   game.selectedAttackerUid = null;
   game.turnNumber += owner === "player" ? 1 : 0;
@@ -308,6 +307,33 @@ function endTurn() {
   log("You end the turn.");
   render();
   window.setTimeout(() => startTurn("bot"), 600);
+}
+
+// The phase button near the hand walks the player's turn forward:
+// Main Phase 1 -> Combat -> Main Phase 2 -> (pass the turn).
+function advancePhase() {
+  if (game.winner || game.turn !== "player") return;
+  const next = game.phase === "main1" ? "combat" : game.phase === "combat" ? "main2" : "pass";
+  if (game.tutorial.active && !stepAllows({ type: "advancePhase", to: next })) {
+    setHint("Follow the tutorial step shown in the gold banner.");
+    return;
+  }
+  sfx("buttonClick");
+  if (next === "pass") {
+    endTurn();
+    return;
+  }
+  game.phase = next;
+  if (next === "combat") {
+    log("You enter your Combat phase.");
+    setHint("Combat — click one of your ready creatures, then click the enemy player or an enemy creature.");
+  } else {
+    game.selectedAttackerUid = null;
+    log("You enter Main Phase 2.");
+    setHint("Main Phase 2 — play more cards, then Pass the Turn.");
+  }
+  maybeAdvanceTutorial();
+  render();
 }
 
 function cleanupEndOfTurn(player) {
@@ -340,6 +366,10 @@ function exertAll(player) {
 
 function playCardFromHand(player, cardUid, targetUid = null) {
   if (game.winner) return false;
+  if (player === game.player && game.phase === "combat") {
+    setHint("You can only play cards during a Main Phase.");
+    return false;
+  }
   const idx = player.hand.findIndex((card) => card.uid === cardUid);
   if (idx < 0) return false;
   const card = player.hand[idx];
@@ -474,7 +504,7 @@ function checkStateBasedActions() {
 }
 
 function attackPlayerWithSelected() {
-  if (game.winner || game.turn !== "player") return;
+  if (game.winner || game.turn !== "player" || game.phase !== "combat") return;
   const attacker = game.player.battlefield.find((card) => card.uid === game.selectedAttackerUid);
   if (!attacker || attacker.canAttack !== true) {
     setHint("Select one of your ready creatures first.");
@@ -500,7 +530,7 @@ function attackPlayerWithSelected() {
 }
 
 function attackCreatureWithSelected(targetUid) {
-  if (game.winner || game.turn !== "player") return;
+  if (game.winner || game.turn !== "player" || game.phase !== "combat") return;
   const attacker = game.player.battlefield.find((card) => card.uid === game.selectedAttackerUid);
   const target = game.bot.battlefield.find((card) => card.uid === targetUid);
   if (!attacker || attacker.canAttack !== true || !target) return;
@@ -647,7 +677,7 @@ const TUTORIAL_STEPS = [
   {
     banner: "Step 2 — Click the Node on your battlefield to exert it for 1 energy.",
     focus: { zone: "playerNode" },
-    allow: (a) => a.type === "exertNode" || a.type === "exertAll",
+    allow: (a) => a.type === "exertNode",
     isComplete: (g) => g.player.energy >= 1,
   },
   {
@@ -657,9 +687,21 @@ const TUTORIAL_STEPS = [
     isComplete: (g) => g.player.battlefield.some((c) => c.id === "ancientBoar"),
   },
   {
-    banner: "Creatures can't attack the turn they're played — that's summoning sickness. Click End Turn to pass to the bot.",
-    focus: { zone: "button", btn: "endTurnBtn" },
-    allow: (a) => a.type === "endTurn",
+    banner: "Your turn has phases. You've finished playing — click Start Next Phase to enter your Combat phase.",
+    focus: { zone: "button", btn: "phaseBtn" },
+    allow: (a) => a.type === "advancePhase",
+    isComplete: (g) => g.phase === "combat" || g.turn === "bot" || g.turnNumber >= 2,
+  },
+  {
+    banner: "Creatures can't attack the turn they're played — that's summoning sickness. Click Start Next Phase to move to Main Phase 2.",
+    focus: { zone: "button", btn: "phaseBtn" },
+    allow: (a) => a.type === "advancePhase",
+    isComplete: (g) => g.phase === "main2" || g.turn === "bot" || g.turnNumber >= 2,
+  },
+  {
+    banner: "Main Phase 2 lets you play more cards after combat. Nothing left to play — click Pass the Turn to hand off to the bot.",
+    focus: { zone: "button", btn: "phaseBtn" },
+    allow: (a) => a.type === "advancePhase",
     isComplete: (g) => g.turn === "bot" || g.turnNumber >= 2,
   },
   {
@@ -675,10 +717,16 @@ const TUTORIAL_STEPS = [
     isComplete: (g) => g.player.nodes.length >= 2,
   },
   {
-    banner: "Exert your Nodes for energy — click each Node, or use the Exert Nodes button.",
+    banner: "Exert both of your Nodes for energy — click each one.",
     focus: { zone: "playerNode" },
-    allow: (a) => a.type === "exertNode" || a.type === "exertAll",
+    allow: (a) => a.type === "exertNode",
     isComplete: (g) => g.player.energy >= 2,
+  },
+  {
+    banner: "Now click Start Next Phase to enter your Combat phase.",
+    focus: { zone: "button", btn: "phaseBtn" },
+    allow: (a) => a.type === "advancePhase",
+    isComplete: (g) => g.phase === "combat",
   },
   {
     banner: "Your Ancient Boar is ready now (no longer summoning sick). Click it to select it as an attacker.",
@@ -687,13 +735,13 @@ const TUTORIAL_STEPS = [
     isComplete: (g) => !!g.selectedAttackerUid,
   },
   {
-    banner: "Click Attack Player to swing at the bot with your Boar (or click an enemy creature to fight it).",
-    focus: { zone: "button", btn: "attackBtn" },
-    allow: (a) => a.type === "attackFace" || a.type === "attackCreature",
-    isComplete: (g) => g.player.battlefield.some((c) => c.id === "ancientBoar" && c.canAttack === false) && !g.selectedAttackerUid,
+    banner: "Now click the bot's Prodigal Sorcerer to attack it. Each creature deals its power to the other — your 3/3 Boar kills the 2/2 Sorcerer and survives.",
+    focus: { zone: "enemyBattle", id: "prodigalSorcerer" },
+    allow: (a) => a.type === "attackCreature" && a.card && a.card.id === "prodigalSorcerer",
+    isComplete: (g) => !g.bot.battlefield.some((c) => c.id === "prodigalSorcerer"),
   },
   {
-    banner: "Tutorial complete! 🎉 You've got the basics. Keep playing freely — reduce the bot to 0 life to win!",
+    banner: "Tutorial complete! 🎉 Finish combat, play more in Main Phase 2, then Pass the Turn — or keep playing freely to reduce the bot to 0 life!",
     focus: null,
     allow: () => true,
     isComplete: () => false,
@@ -765,9 +813,13 @@ function render() {
 
   els.status.textContent = game.winner
     ? game.winner
-    : game.turn === "player"
-      ? "Your turn. Build energy, play creatures, cast spells, then attack."
-      : "Bot turn. The arcane deck is thinking.";
+    : game.turn !== "player"
+      ? "Bot turn. The arcane deck is thinking."
+      : game.phase === "combat"
+        ? "Combat — click a creature, then click the enemy player or a creature."
+        : game.phase === "main2"
+          ? "Main Phase 2 — play more cards, then Pass the Turn."
+          : "Main Phase 1 — exert Nodes for energy and play your cards.";
   renderEndOverlay();
   els.playerLife.textContent = player.life;
   els.botLife.textContent = bot.life;
@@ -784,20 +836,25 @@ function render() {
   els.playerGraveCount.textContent = player.graveyard.length;
   els.botGraveCount.textContent = bot.graveyard.length;
 
-  const canExert = game.turn === "player" && !game.winner && player.nodes.some((node) => !node.exerted);
-  const canAttack = game.turn === "player" && !game.winner && !!game.selectedAttackerUid;
-  const canEnd = game.turn === "player" && !game.winner;
+  const nextPhase = game.phase === "main1" ? "combat" : game.phase === "combat" ? "main2" : "pass";
+  els.phaseBtn.textContent = nextPhase === "pass" ? "Pass the Turn" : "Start Next Phase";
+  els.phaseBtn.disabled = game.turn !== "player" || !!game.winner || !stepAllows({ type: "advancePhase", to: nextPhase });
+  applyButtonFocus(els.phaseBtn, step && step.focus && step.focus.btn === "phaseBtn");
 
-  els.exertAllBtn.disabled = !canExert || !stepAllows({ type: "exertAll" });
-  els.attackBtn.disabled = !canAttack || !stepAllows({ type: "attackFace" });
-  els.endTurnBtn.disabled = !canEnd || !stepAllows({ type: "endTurn" });
-
-  applyButtonFocus(els.exertAllBtn, step && step.focus && step.focus.btn === "exertAllBtn");
-  applyButtonFocus(els.attackBtn, step && step.focus && step.focus.btn === "attackBtn");
-  applyButtonFocus(els.endTurnBtn, step && step.focus && step.focus.btn === "endTurnBtn");
+  // Highlight the opponent portrait as a face target during combat.
+  const faceTargetable = game.turn === "player" && game.phase === "combat" && !!game.selectedAttackerUid && !game.winner;
+  if (els.botStatusBar) els.botStatusBar.classList.toggle("face-targetable", faceTargetable);
 
   els.turnBadge.textContent = game.turn === "player" ? "Your Turn" : "Bot Turn";
-  els.phaseCallout.textContent = game.winner ? game.winner : game.turn === "player" ? "Main Phase" : "Resolving Bot Actions";
+  els.phaseCallout.textContent = game.winner
+    ? game.winner
+    : game.turn !== "player"
+      ? "Resolving Bot Actions"
+      : game.phase === "combat"
+        ? "Combat"
+        : game.phase === "main2"
+          ? "Main Phase 2"
+          : "Main Phase 1";
 
   renderHand();
   renderBattlefield(els.playerBattlefield, player.battlefield, true);
@@ -820,7 +877,7 @@ function renderHand() {
   els.playerHand.innerHTML = "";
   const step = game.tutorial.active ? currentStep() : null;
   for (const card of game.player.hand) {
-    const affordable = game.turn === "player" && !game.winner && (card.type === "Node" ? !game.player.nodePlayed : game.player.energy >= card.cost);
+    const affordable = game.turn === "player" && !game.winner && game.phase !== "combat" && (card.type === "Node" ? !game.player.nodePlayed : game.player.energy >= card.cost);
     const allowed = stepAllows({ type: "playCard", card });
     const playable = affordable && allowed;
     const el = document.createElement("article");
@@ -853,7 +910,8 @@ function renderBattlefield(container, cards, isPlayer) {
     const el = document.createElement("article");
     const selectedClass = game.selectedAttackerUid === card.uid ? "selected" : "";
     const readyClass = card.canAttack === true ? "ready" : "";
-    const targetClass = !isPlayer && game.turn === "player" && game.selectedAttackerUid ? "enemy-target" : "";
+    const inCombat = game.turn === "player" && game.phase === "combat";
+    const targetClass = !isPlayer && inCombat && game.selectedAttackerUid ? "enemy-target" : "";
     el.className = `card battle-card ${card.faction} ${card.summoningSick ? "sick" : ""} ${selectedClass} ${readyClass} ${targetClass}`;
     el.dataset.uid = card.uid;
     el.innerHTML = `
@@ -865,7 +923,7 @@ function renderBattlefield(container, cards, isPlayer) {
         <div class="rules">${escapeHtml(card.rules || (card.summoningSick ? "Summoning sick." : card.canAttack === true ? "Ready to attack." : "Already acted this turn."))}</div>
       </div>
     `;
-    if (isPlayer && game.turn === "player" && card.canAttack === true) {
+    if (isPlayer && inCombat && card.canAttack === true) {
       if (step && step.focus && step.focus.zone === "playerBattle" && step.focus.id === card.id) el.classList.add("tutorial-focus");
       el.role = "button";
       el.tabIndex = 0;
@@ -876,16 +934,17 @@ function renderBattlefield(container, cards, isPlayer) {
           return;
         }
         game.selectedAttackerUid = game.selectedAttackerUid === card.uid ? null : card.uid;
-        setHint(game.selectedAttackerUid ? "Choose Attack Player or click an enemy creature." : "Click a card in your hand to play it. Exert Nodes for energy.");
+        setHint(game.selectedAttackerUid ? "Click the enemy player or an enemy creature to attack." : "Click one of your ready creatures to attack with it.");
         render();
       });
     }
-    if (!isPlayer && game.turn === "player" && game.selectedAttackerUid) {
+    if (!isPlayer && inCombat && game.selectedAttackerUid) {
+      if (step && step.focus && step.focus.zone === "enemyBattle" && step.focus.id === card.id) el.classList.add("tutorial-focus");
       el.role = "button";
       el.tabIndex = 0;
       el.title = "Attack this creature";
       el.addEventListener("click", () => {
-        if (game.tutorial.active && !stepAllows({ type: "attackCreature" })) {
+        if (game.tutorial.active && !stepAllows({ type: "attackCreature", card })) {
           setHint("Follow the tutorial step shown in the gold banner.");
           return;
         }
@@ -1184,18 +1243,17 @@ els.endPlayAgainBtn.addEventListener("click", () => {
 });
 els.endMenuBtn.addEventListener("click", returnToMenu);
 updateMuteButton();
-els.exertAllBtn.addEventListener("click", () => {
-  if (game.tutorial.active && !stepAllows({ type: "exertAll" })) return;
-  exertAll(game.player);
-});
-els.attackBtn.addEventListener("click", () => {
-  if (game.tutorial.active && !stepAllows({ type: "attackFace" })) return;
-  attackPlayerWithSelected();
-});
-els.endTurnBtn.addEventListener("click", () => {
-  if (game.tutorial.active && !stepAllows({ type: "endTurn" })) return;
-  endTurn();
-});
+els.phaseBtn.addEventListener("click", advancePhase);
+if (els.botStatusBar) {
+  els.botStatusBar.addEventListener("click", () => {
+    if (game.turn !== "player" || game.phase !== "combat" || game.winner || !game.selectedAttackerUid) return;
+    if (game.tutorial.active && !stepAllows({ type: "attackFace" })) {
+      setHint("Follow the tutorial step shown in the gold banner.");
+      return;
+    }
+    attackPlayerWithSelected();
+  });
+}
 els.logToggleBtn.addEventListener("click", () => els.sideRail.classList.toggle("open"));
 els.sideRailClose.addEventListener("click", () => els.sideRail.classList.remove("open"));
 els.botGraveBtn.addEventListener("click", () => openGraveyard(game.bot));

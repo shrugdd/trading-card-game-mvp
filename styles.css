@@ -470,6 +470,50 @@ h2 {
   text-transform: uppercase;
 }
 
+/* Hand label row carries the phase button on its right */
+.hand-label {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.phase-btn {
+  background: linear-gradient(180deg, #56a14d, #357a2f);
+  border: 1px solid #6fbf63;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  min-height: 38px;
+  padding: 0 20px;
+  text-transform: none;
+  transition: transform 0.08s ease, filter 0.12s ease;
+}
+
+.phase-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.phase-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.phase-btn:disabled {
+  cursor: default;
+  filter: grayscale(0.6) brightness(0.6);
+}
+
+/* Opponent portrait becomes a clickable face target during combat */
+.status-bar.opponent.face-targetable {
+  cursor: pointer;
+  border-color: var(--danger, #d8654f);
+  box-shadow: 0 0 0 2px rgba(216, 101, 79, 0.5), 0 0 18px rgba(216, 101, 79, 0.35);
+}
+
 .battlefield,
 .node-row {
   align-content: start;
