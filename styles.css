@@ -191,6 +191,10 @@ h2 {
   display: none;
 }
 
+.side-rail-close {
+  display: none;
+}
+
 /* ---------- Tutorial banner ---------- */
 .tutorial-banner {
   align-items: center;
@@ -955,6 +959,17 @@ h2 {
 
   .log-toggle {
     display: inline-block;
+  }
+
+  .side-rail-close {
+    display: block;
+    width: 100%;
+    margin-bottom: 8px;
+    min-height: 44px;
+    background: linear-gradient(180deg, #3a2530, #281820);
+    border-color: rgba(216, 189, 117, 0.6);
+    color: #ffe9b0;
+    font-size: 15px;
   }
 
   .side-rail {

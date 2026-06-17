@@ -111,6 +111,7 @@ const els = {
   openPackBtn: document.querySelector("#openPackBtn"),
   tutorialBanner: document.querySelector("#tutorialBanner"),
   sideRail: document.querySelector("#sideRail"),
+  sideRailClose: document.querySelector("#sideRailClose"),
   // previews
   cardPreview: document.querySelector("#cardPreview"),
   enterPreview: document.querySelector("#enterPreview"),
@@ -144,6 +145,7 @@ function makeCard(id) {
     tempMight: 0,
     tempToughness: 0,
     canAttack: false,
+    summoningSick: false,
     exerted: false,
   };
 }
@@ -273,6 +275,7 @@ function startTurn(owner) {
   for (const node of player.nodes) node.exerted = false;
   for (const creature of player.battlefield) {
     creature.canAttack = true;
+    creature.summoningSick = false;
     creature.tempMight = 0;
     creature.tempToughness = 0;
     creature.damage = 0;
@@ -356,6 +359,7 @@ function playCardFromHand(player, cardUid, targetUid = null) {
 
   if (card.type === "Creature") {
     card.canAttack = false;
+    card.summoningSick = true;
     player.battlefield.push(card);
     log(`${player.name} cast ${card.name}.`);
     showEnterPreview(card);
@@ -805,7 +809,7 @@ function renderBattlefield(container, cards, isPlayer) {
     const selectedClass = game.selectedAttackerUid === card.uid ? "selected" : "";
     const readyClass = card.canAttack === true ? "ready" : "";
     const targetClass = !isPlayer && game.turn === "player" && game.selectedAttackerUid ? "enemy-target" : "";
-    el.className = `card battle-card ${card.faction} ${card.canAttack === false ? "sick" : ""} ${selectedClass} ${readyClass} ${targetClass}`;
+    el.className = `card battle-card ${card.faction} ${card.summoningSick ? "sick" : ""} ${selectedClass} ${readyClass} ${targetClass}`;
     el.dataset.uid = card.uid;
     el.innerHTML = `
       ${card.damage ? `<div class="damage-pill">${card.damage} dmg</div>` : ""}
@@ -813,7 +817,7 @@ function renderBattlefield(container, cards, isPlayer) {
       <div class="battle-body">
         <div class="name">${escapeHtml(card.name)}</div>
         <div class="stats">${currentMight(card)}/${currentToughness(card)}</div>
-        <div class="rules">${escapeHtml(card.rules || (card.canAttack === true ? "Ready to attack." : "Preparing."))}</div>
+        <div class="rules">${escapeHtml(card.rules || (card.summoningSick ? "Summoning sick." : card.canAttack === true ? "Ready to attack." : "Already acted this turn."))}</div>
       </div>
     `;
     if (isPlayer && game.turn === "player" && card.canAttack === true) {
@@ -1120,6 +1124,7 @@ els.endTurnBtn.addEventListener("click", () => {
   endTurn();
 });
 els.logToggleBtn.addEventListener("click", () => els.sideRail.classList.toggle("open"));
+els.sideRailClose.addEventListener("click", () => els.sideRail.classList.remove("open"));
 els.botGraveBtn.addEventListener("click", () => openGraveyard(game.bot));
 els.playerGraveBtn.addEventListener("click", () => openGraveyard(game.player));
 els.graveModalClose.addEventListener("click", closeGraveyard);
