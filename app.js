@@ -91,6 +91,8 @@ const els = {
   botLife: document.querySelector("#botLife"),
   playerDeck: document.querySelector("#playerDeck"),
   botDeck: document.querySelector("#botDeck"),
+  playerDeckPile: document.querySelector("#playerDeckPile"),
+  botDeckPile: document.querySelector("#botDeckPile"),
   playerHandCount: document.querySelector("#playerHandCount"),
   botHand: document.querySelector("#botHand"),
   playerEnergy: document.querySelector("#playerEnergy"),
@@ -125,6 +127,10 @@ const els = {
 
 const BOT_STEP_DELAY = 1000; // pause between individual bot actions
 const BOT_TURN_GAP = 1150; // pause before handing the turn back
+
+// Hover-zoom is a mouse affordance. Touch devices have no "off" state for it,
+// so we only enable it on devices with a real hovering pointer.
+const SUPPORTS_HOVER = !!(window.matchMedia && window.matchMedia("(hover: hover) and (pointer: fine)").matches);
 
 let uid = 0;
 let game;
@@ -700,6 +706,9 @@ function renderTutorial() {
 // ---------- Rendering ----------
 function render() {
   if (!game) return;
+  // The hovered card's DOM node is recreated on every render, so its mouseleave
+  // may never fire — clear any active preview to avoid it getting stuck.
+  hideCardPreview();
   maybeAdvanceTutorial();
 
   const player = game.player;
@@ -715,6 +724,8 @@ function render() {
   els.botLife.textContent = bot.life;
   els.playerDeck.textContent = player.deck.length;
   els.botDeck.textContent = bot.deck.length;
+  els.playerDeckPile.textContent = player.deck.length;
+  els.botDeckPile.textContent = bot.deck.length;
   els.playerHandCount.textContent = player.hand.length;
   els.botHand.textContent = bot.hand.length;
   els.playerEnergy.textContent = player.energy;
@@ -873,6 +884,7 @@ function renderNodes(container, nodes, isPlayer) {
 
 // ---------- Hover zoom preview ----------
 function attachPreview(el, card) {
+  if (!SUPPORTS_HOVER) return; // no hover zoom on touch devices
   el.addEventListener("mouseenter", (e) => {
     showCardPreview(card);
     positionPreview(e);
