@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Trading Card Game MVP</title>
+    <title>Runeborn — Green vs Arcane</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -11,14 +12,15 @@
 
     <!-- Main menu -->
     <div id="mainMenu" class="menu-overlay">
-      <div class="menu-card">
-        <h1>Green vs Arcane</h1>
-        <p class="menu-sub">A trading card game</p>
+      <div class="menu-card rune-frame">
+        <img class="menu-logo" src="logo.svg" alt="Runeborn — Green vs Arcane" />
+        <h1 class="visually-hidden">Runeborn</h1>
         <p class="menu-hint">New here? Start the tutorial — it walks you through your first two turns step by step.</p>
         <div class="menu-buttons">
           <button id="startTutorialBtn" type="button" class="menu-primary">Start Tutorial</button>
           <button id="openPackBtn" type="button">Open Pack</button>
         </div>
+        <p class="menu-foot">An MVP trading card game · v0.3</p>
       </div>
     </div>
 
@@ -39,13 +41,29 @@
       </div>
     </div>
 
+    <!-- Victory / defeat overlay -->
+    <div id="endOverlay" class="end-overlay" hidden>
+      <div class="end-card rune-frame">
+        <h2 id="endTitle">Victory</h2>
+        <p id="endText"></p>
+        <div class="menu-buttons">
+          <button id="endPlayAgainBtn" type="button" class="menu-primary">Play Again</button>
+          <button id="endMenuBtn" type="button">Main Menu</button>
+        </div>
+      </div>
+    </div>
+
     <main id="gameRoot" class="game-shell" hidden>
       <section class="topbar">
-        <div>
-          <h1>Green vs Arcane</h1>
-          <p id="status">Loading game...</p>
+        <div class="brand">
+          <img class="topbar-logo" src="favicon.svg" alt="" aria-hidden="true" />
+          <div>
+            <h1>Runeborn</h1>
+            <p id="status">Loading game...</p>
+          </div>
         </div>
         <div class="actions">
+          <button id="muteBtn" type="button" title="Toggle sound">🔊</button>
           <button id="menuBtn" type="button">Menu</button>
           <button id="newGameBtn" type="button">New Game</button>
           <button id="exertAllBtn" type="button">Exert Nodes</button>
@@ -121,6 +139,7 @@
       </div>
     </main>
 
+    <script src="audio.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

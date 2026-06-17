@@ -124,7 +124,19 @@ const els = {
   graveModalTitle: document.querySelector("#graveModalTitle"),
   graveModalList: document.querySelector("#graveModalList"),
   graveModalClose: document.querySelector("#graveModalClose"),
+  // audio + end overlay
+  muteBtn: document.querySelector("#muteBtn"),
+  endOverlay: document.querySelector("#endOverlay"),
+  endCard: document.querySelector("#endOverlay .end-card"),
+  endTitle: document.querySelector("#endTitle"),
+  endText: document.querySelector("#endText"),
+  endPlayAgainBtn: document.querySelector("#endPlayAgainBtn"),
+  endMenuBtn: document.querySelector("#endMenuBtn"),
 };
+
+function sfx(name) {
+  if (window.RunebornAudio) window.RunebornAudio.play(name);
+}
 
 const BOT_STEP_DELAY = 1000; // pause between individual bot actions
 const BOT_TURN_GAP = 1150; // pause before handing the turn back
@@ -319,7 +331,10 @@ function exertAll(player) {
   for (const node of player.nodes) {
     if (exertNode(player, node)) count++;
   }
-  if (count) log(`${player.name} exerted ${count} Node${count === 1 ? "" : "s"} for ${count} energy.`);
+  if (count) {
+    log(`${player.name} exerted ${count} Node${count === 1 ? "" : "s"} for ${count} energy.`);
+    sfx("nodeExert");
+  }
   render();
 }
 
@@ -338,6 +353,7 @@ function playCardFromHand(player, cardUid, targetUid = null) {
     player.nodes.push(card);
     player.nodePlayed = true;
     log(`${player.name} played Node.`);
+    sfx("cardPlay");
     showEnterPreview(card);
     render();
     pulseCard(card.uid, "pulse-cast");
@@ -362,12 +378,14 @@ function playCardFromHand(player, cardUid, targetUid = null) {
     card.summoningSick = true;
     player.battlefield.push(card);
     log(`${player.name} cast ${card.name}.`);
+    sfx("cardPlay");
     showEnterPreview(card);
     handleCreatureEntered(player, card);
     game.lastEvent = { kind: "cast", sourceUid: card.uid };
   } else if (card.id === "ignite") {
     const event = resolveIgnite(player, targetUid);
     log(`${player.name} cast Ignite.`);
+    sfx("spell");
     showEnterPreview(card);
     triggerSpellCast(player);
     player.graveyard.push(card);
@@ -416,6 +434,7 @@ function resolveIgnite(player, targetUid = null) {
   const targetRect = getUidRect(target.uid);
   const damage = 3 + damageSpellBonus(player);
   target.damage += damage;
+  sfx("damage");
   log(`Ignite deals ${damage} damage to ${target.name}.`);
   return {
     kind: "spellDamage",
@@ -465,6 +484,7 @@ function attackPlayerWithSelected() {
   const targetRect = getCombatTargetRect("bot");
   game.bot.life -= currentMight(attacker);
   attacker.canAttack = false;
+  sfx("attack");
   log(`${attacker.name} attacks the bot for ${currentMight(attacker)}.`);
   game.lastEvent = {
     kind: "attackFace",
@@ -489,6 +509,7 @@ function attackCreatureWithSelected(targetUid) {
   attacker.damage += currentMight(target);
   target.damage += currentMight(attacker);
   attacker.canAttack = false;
+  sfx("attack");
   log(`${attacker.name} attacks ${target.name}.`);
   game.lastEvent = {
     kind: "attackCreature",
@@ -509,6 +530,7 @@ function botAttackFaceSingle(attacker) {
   const sourceRect = getUidRect(attacker.uid);
   const targetRect = getCombatTargetRect("player");
   game.player.life -= currentMight(attacker);
+  sfx("attack");
   log(`${attacker.name} attacks you for ${currentMight(attacker)}.`);
   game.lastEvent = {
     kind: "attackFace",
@@ -600,10 +622,14 @@ function playFirstNode(player) {
 }
 
 function checkWinner() {
+  const had = game.winner;
   if (game.player.life <= 0 && game.bot.life <= 0) game.winner = "Draw";
   else if (game.player.life <= 0) game.winner = "Bot wins";
   else if (game.bot.life <= 0) game.winner = "You win";
-  if (game.winner) log(`${game.winner}!`);
+  if (game.winner && !had) {
+    log(`${game.winner}!`);
+    sfx(game.winner === "You win" ? "win" : "lose");
+  }
 }
 
 function setHint(text) {
@@ -707,6 +733,24 @@ function renderTutorial() {
   els.tutorialBanner.textContent = step.banner;
 }
 
+function renderEndOverlay() {
+  if (!game.winner) {
+    els.endOverlay.hidden = true;
+    return;
+  }
+  const win = game.winner === "You win";
+  const draw = game.winner === "Draw";
+  els.endCard.classList.toggle("win", win);
+  els.endCard.classList.toggle("lose", !win && !draw);
+  els.endTitle.textContent = win ? "Victory!" : draw ? "Draw" : "Defeat";
+  els.endText.textContent = win
+    ? "You reduced the bot to 0 life. Well played!"
+    : draw
+      ? "Both heroes fell at the same moment."
+      : "The arcane deck got the better of you this time.";
+  els.endOverlay.hidden = false;
+}
+
 // ---------- Rendering ----------
 function render() {
   if (!game) return;
@@ -724,6 +768,7 @@ function render() {
     : game.turn === "player"
       ? "Your turn. Build energy, play creatures, cast spells, then attack."
       : "Bot turn. The arcane deck is thinking.";
+  renderEndOverlay();
   els.playerLife.textContent = player.life;
   els.botLife.textContent = bot.life;
   els.playerDeck.textContent = player.deck.length;
@@ -878,6 +923,7 @@ function renderNodes(container, nodes, isPlayer) {
       }
       if (game.player.nodes.includes(node) && exertNode(game.player, node)) {
         log("You exerted Node for 1 energy.");
+        sfx("nodeExert");
         render();
       }
     });
@@ -1097,20 +1143,47 @@ function showToast(text) {
 
 // ---------- Menu + chrome wiring ----------
 function startTutorial() {
+  if (window.RunebornAudio) window.RunebornAudio.resume();
+  sfx("buttonClick");
   els.mainMenu.hidden = true;
   els.gameRoot.hidden = false;
   newGame({ tutorial: true });
 }
 
 function returnToMenu() {
+  sfx("buttonClick");
+  els.endOverlay.hidden = true;
   els.gameRoot.hidden = true;
   els.mainMenu.hidden = false;
 }
 
+function updateMuteButton() {
+  const muted = !!(window.RunebornAudio && window.RunebornAudio.isMuted());
+  els.muteBtn.textContent = muted ? "🔇" : "🔊";
+  els.muteBtn.title = muted ? "Sound off — click to unmute" : "Sound on — click to mute";
+}
+
 els.startTutorialBtn.addEventListener("click", startTutorial);
-els.openPackBtn.addEventListener("click", () => showToast("Packs coming soon!"));
+els.openPackBtn.addEventListener("click", () => {
+  sfx("buttonClick");
+  showToast("Packs coming soon!");
+});
 els.menuBtn.addEventListener("click", returnToMenu);
-els.newGameBtn.addEventListener("click", () => newGame({ tutorial: true }));
+els.newGameBtn.addEventListener("click", () => {
+  sfx("buttonClick");
+  newGame({ tutorial: true });
+});
+els.muteBtn.addEventListener("click", () => {
+  if (window.RunebornAudio) window.RunebornAudio.toggleMute();
+  updateMuteButton();
+  sfx("buttonClick");
+});
+els.endPlayAgainBtn.addEventListener("click", () => {
+  sfx("buttonClick");
+  newGame({ tutorial: false });
+});
+els.endMenuBtn.addEventListener("click", returnToMenu);
+updateMuteButton();
 els.exertAllBtn.addEventListener("click", () => {
   if (game.tutorial.active && !stepAllows({ type: "exertAll" })) return;
   exertAll(game.player);
