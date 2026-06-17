@@ -137,6 +137,156 @@ p {
   border-color: #6fbf63;
 }
 
+/* ---------- Runeborn branding ---------- */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.menu-logo {
+  display: block;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto 6px;
+  filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.55));
+}
+
+.menu-foot {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  margin-top: 22px;
+}
+
+/* Subtle animated arcane glow behind the menu */
+.menu-overlay::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 760px;
+  height: 760px;
+  max-width: 120vw;
+  max-height: 120vw;
+  transform: translate(-50%, -50%);
+  background:
+    radial-gradient(circle, rgba(216, 189, 117, 0.16), transparent 60%),
+    radial-gradient(circle, rgba(62, 131, 212, 0.12), transparent 70%);
+  animation: menuGlow 7s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes menuGlow {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.08);
+  }
+}
+
+/* Reusable ornate gold frame for overlay panels */
+.rune-frame {
+  position: relative;
+  border: 1px solid rgba(216, 189, 117, 0.7) !important;
+  box-shadow:
+    0 0 0 4px rgba(13, 17, 23, 0.9),
+    0 0 0 5px rgba(216, 189, 117, 0.35),
+    0 30px 80px rgba(0, 0, 0, 0.6);
+}
+
+.rune-frame::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  bottom: 8px;
+  left: 8px;
+  border: 1px solid rgba(216, 189, 117, 0.25);
+  border-radius: 12px;
+  pointer-events: none;
+}
+
+/* Topbar brand lockup */
+.brand {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.topbar-logo {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+}
+
+#muteBtn {
+  font-size: 16px;
+  min-width: 44px;
+  padding: 0 10px;
+}
+
+/* ---------- Victory / defeat overlay ---------- */
+.end-overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 59;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(6, 8, 12, 0.78);
+}
+
+.end-overlay[hidden] {
+  display: none;
+}
+
+.end-card {
+  background: rgba(20, 25, 33, 0.97);
+  border-radius: 16px;
+  max-width: 440px;
+  padding: 36px 32px;
+  text-align: center;
+  width: 100%;
+}
+
+.end-card h2 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 38px;
+  letter-spacing: 0.02em;
+}
+
+.end-card.win h2 {
+  color: var(--ready);
+}
+
+.end-card.lose h2 {
+  color: var(--danger);
+}
+
+.end-card p {
+  color: var(--muted);
+  margin: 12px 0 26px;
+}
+
 /* ---------- Game shell ---------- */
 .game-shell {
   display: flex;
