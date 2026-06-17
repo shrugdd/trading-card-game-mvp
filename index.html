@@ -66,9 +66,6 @@
           <button id="muteBtn" type="button" title="Toggle sound">🔊</button>
           <button id="menuBtn" type="button">Menu</button>
           <button id="newGameBtn" type="button">New Game</button>
-          <button id="exertAllBtn" type="button">Exert Nodes</button>
-          <button id="attackBtn" type="button">Attack Player</button>
-          <button id="endTurnBtn" type="button">End Turn</button>
           <button id="logToggleBtn" type="button" class="log-toggle">Log</button>
         </div>
       </section>
@@ -122,13 +119,16 @@
             <p><span id="playerEnergy">0</span> energy · <span id="playerNodes">0</span> nodes · <span id="playerHandCount">5</span> hand · <span id="playerDeck">40</span> deck</p>
           </div>
 
-          <div class="lane-label">Your Hand</div>
+          <div class="lane-label hand-label">
+            <span>Your Hand</span>
+            <button id="phaseBtn" type="button" class="phase-btn">Start Next Phase</button>
+          </div>
           <div id="playerHand" class="hand"></div>
         </section>
 
         <aside id="sideRail" class="side-rail">
           <button id="sideRailClose" type="button" class="side-rail-close">✕ Close</button>
-          <div id="stackHint" class="stack-hint">Click a card in your hand to play it. Exert Nodes for energy.</div>
+          <div id="stackHint" class="stack-hint">Main Phase 1 — click a Node to exert it for energy, then play cards from your hand.</div>
           <div class="graveyards">
             <button id="botGraveBtn" type="button" class="grave-pile">Bot Graveyard · <span id="botGraveCount">0</span></button>
             <button id="playerGraveBtn" type="button" class="grave-pile">Your Graveyard · <span id="playerGraveCount">0</span></button>
